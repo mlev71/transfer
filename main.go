@@ -1,411 +1,357 @@
-package main
+package transfer
 
 import (
-  "github.com/minio/minio-go"
-  "log"
-  "os"
+	"encoding/json"
+	"github.com/gorilla/mux"
+	"github.com/tidwall/gjson"
+	"github.com/urfave/negroni"
+	"log"
+	"net/http"
 
-  "net/http"
-  "github.com/gorilla/mux"
-  "github.com/urfave/negroni"
+	"bufio"
+	"io/ioutil"
+	"time"
+	//"strings"
 
-  "testing"
-  "encoding/json"
-  "io"
-  //"io/ioutil"
-  "bufio"
-  "bytes"
-  //"strings"
+	"github.com/minio/minio-go"
 )
 
-var ENDPOINT = "minionas.uvadcos.io"
-var ACCESSKEY = "breakfast"
-var SECRETKEY = "breakfast"
+var ORS_MDS = "ors.uvadcos.io"
+
+var MINIO_ENDPOINT = "minionas.uvadcos.io"
+var MINIO_ACCESSKEY = "breakfast"
+var MINIO_SECRETKEY = "breakfast"
+
+var DEFAULT_NAMESPACE = "ark:99999"
+var DEFAULT_BUCKET = "default"
 
 func init() {
 
-  // initialize client object
-  minioClient, err := minio.New(ENDPOINT, ACCESSKEY, SECRETKEY, false)
-  if err != nil {
-    // crash the program if client cannot initialize
-    log.Fatalln("STARTUP: Minio Client Error " + err.Error())
-  }
+	// initialize client object
+	minioClient, err := minio.New(MINIO_ENDPOINT, MINIO_ACCESSKEY, MINIO_SECRETKEY, false)
+	if err != nil {
+		// crash the program if client cannot initialize
+		log.Fatalln("STARTUP: Minio Client Error " + err.Error())
+	}
 
-  var bucketName = "default"
-  err = minioClient.MakeBucket(bucketName, "us-east-1")
-
-
-}
-
-func main () {
-
-  r := mux.NewRouter().StrictSlash(false)
-  n := negroni.New()
-
-  r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-    if r.Method == "POST" {
-      UploadHandler(w, r)
-    } else {
-      http.Error(w, "Method Not Allowed" , 403)
-    }
-    return
-  })
-
-
-  r.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
-    if r.Method == "POST" {
-      UploadStreaming(w, r)
-    } else {
-      http.Error(w, "Method Not Allowed" , 403)
-    }
-    return
-  })
-
-  n.UseHandler(r)
-  log.Fatal(http.ListenAndServe(":8080", n))
+	var bucketName = "default"
+	err = minioClient.MakeBucket(bucketName, "us-east-1")
 
 }
 
+func main() {
+
+	r := mux.NewRouter().StrictSlash(false)
+	n := negroni.New()
+
+	r.HandleFunc("/upload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			UploadHandler(w, r)
+		} else {
+			http.Error(w, "Method Not Allowed", 403)
+		}
+		return
+	})
+
+	r.HandleFunc("/{prefix}/{suffix}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			DownloadHandler(w, r)
+		}
+		if r.Method == "PUT" {
+			UpdateHandler(w, r)
+		} else {
+			http.Error(w, "Method Not Allowed", 403)
+		}
+
+	})
+
+	n.UseHandler(r)
+	log.Fatal(http.ListenAndServe(":8080", n))
+
+}
+
+func UploadHandler(w http.ResponseWriter, r *http.Request) {
+	var datasetGUID, downloadGUID string
+	var bucket, key, namespace string
+	log.Println("Starting Parse Request")
+
+	w.Header().Set("Content-Type", "application/json")
+
+	err := r.ParseMultipartForm(2 << 20)
+	if err != nil {
+		http.Error(w, `{"error": "`+err.Error()+`", "message": "Failed to Parse Multipart Form"}`, 500)
+		return
+	}
+
+	objectFile, objectFileHeader, err := r.FormFile("object")
+
+	if err != nil {
+		http.Error(w, `{"error": "`+err.Error()+`", "message": "Multipart Form missing object file upload"}`, 400)
+		return
+	}
+
+	datasetMetadata := r.PostFormValue("metadata")
+
+	if datasetMetadata == "" {
+		http.Error(w, `{"error": "`+err.Error()+`", "message": "Multipart Form missing object metadata"}`, 400)
+		return
+	}
+
+	namespace = r.PostFormValue("namespace")
+	if namespace == "" {
+		namespace = DEFAULT_NAMESPACE
+	}
+
+	bucket = r.PostFormValue("bucket")
+	if bucket == "" {
+		bucket = DEFAULT_BUCKET
+	}
+
+	key = r.PostFormValue("key")
+	if key == "" {
+		key = objectFileHeader.Filename
+	}
+
+	// mint the dataset identifier
+	mintDataset, err := MintIdentifier(namespace, []byte(datasetMetadata))
+	datasetGUID = gjson.Get(string(mintDataset), "created").String()
+
+	if err != nil {
+		http.Error(w, "Failed to Create Identifier: "+err.Error(), 500)
+		return
+	}
+
+	// mint the DataDownload Identifier
+	now, _ := time.Now().MarshalText()
+
+	//dataDownload["@context"] = "http://schema.org/"
+	dataDownload := map[string]string{
+		"name":         objectFileHeader.Filename,
+		"dateUploaded": string(now),
+		"dataset":      datasetGUID,
+	}
+	dataDownloadEncoded, err := json.Marshal(dataDownload)
+
+	if err != nil {
+		http.Error(w, "Error Encoding DataDownload Metadata to JSON: "+err.Error(), 500)
+		return
+	}
+
+	mintDownload, err := MintIdentifier("ark:99999", dataDownloadEncoded)
+	downloadGUID = gjson.Get(string(mintDownload), "created").String()
+	dataDownload["@id"] = downloadGUID
+
+	// Write Object to Minio
+	// create a minio client
+	minioClient, err := minio.New(MINIO_ENDPOINT, MINIO_ACCESSKEY, MINIO_SECRETKEY, false)
+
+	if err != nil {
+		http.Error(w, "Error Creating Minio Client: "+err.Error(), 500)
+		return
+	}
+
+	// upload object to minio
+	_, err = minioClient.PutObject(
+		bucket,
+		objectFileHeader.Filename,
+		objectFile,
+		objectFileHeader.Size,
+		minio.PutObjectOptions{UserMetadata: map[string]string{"id": downloadGUID, "type": "DataDownload", "dataset": datasetGUID}},
+	)
+
+	if err != nil {
+		http.Error(w, `{"error": "`+err.Error()+`", "message", "Failed to Upload Object to Minio"}`, 500)
+		return
+	}
+
+	// Update Dataset
+	_, err = json.Marshal(map[string]interface{}{
+		"distribution": map[string]interface{}{
+			"@id":   downloadGUID,
+			"@type": "DataDownload",
+			"name":  objectFileHeader.Filename,
+		},
+	})
+
+	// Update DataDownload with S3 Path
+	downloadUpdate, err := json.Marshal(map[string]interface{}{
+		"contentURL": "s3a://" + MINIO_ENDPOINT + "/" + bucket + "/" + key,
+	})
+
+	_, err = UpdateIdentifier(downloadGUID, downloadUpdate)
+
+	if err != nil {
+		http.Error(w, "Error Updating Download GUID Identifier with S3 URL: "+err.Error(), 500)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Write([]byte(`{"status": "success", "namespace": "` + namespace + `", "bucket": "` +
+		bucket + `", "metadata": ` + datasetMetadata + `, "dataset": "` +
+		datasetGUID + `", "download": "` + downloadGUID + `"}`))
+}
+
+func DownloadHandler(w http.ResponseWriter, r *http.Request) {
+
+	// read in path variables
+	vars := mux.Vars(r)
+	guid := vars["prefix"] + "/" + vars["suffix"]
+
+	// get the identifier metadata
+	download, err := QueryDownload(guid)
+
+	// get minio object
+
+	// construct a multipart form
+
+}
+
+func UpdateHandler(w http.ResponseWriter, r *http.Request) {}
 
 func UploadStreaming(w http.ResponseWriter, r *http.Request) {
 
-  // get multipart reader from request
-  //var metadataEncoded []byte
-  //var buf = make([]byte, 256)
+	var datasetGUID, downloadGUID string
+	var bucket = "default"
 
-  var metadataEncoded bytes.Buffer
-  var dataBuffer bytes.Buffer
+	// TODO: Cancelable Request cleanup
+	notify := w.(http.CloseNotifier).CloseNotify()
+	go func() {
+		<-notify
 
+		// delete datadownload
 
-  multipartFormReader, err := r.MultipartReader()
-  if err != nil {
-    http.Error(w, "Error Streaming MultipartForm: " + err.Error(), 400)
-    return
-  }
+		// delete the minio object
 
-  var dataFileName string
-  var dataSize int64
+		// delete the identifier for the dataset
+		log.Println("Request cancelled cleaning up resources")
 
-  for {
-    p, err := multipartFormReader.NextPart()
+	}()
 
-    if err == io.EOF {
-      break
-    }
+	// get multipart reader from request
+	multipartFormReader, err := r.MultipartReader()
+	if err != nil {
+		http.Error(w, "Error Streaming MultipartForm: "+err.Error(), 400)
+		return
+	}
 
-    if err != nil {
-      http.Error(w, "Error Streaming MultipartForm: " + err.Error(), 400)
-      return
-    }
+	// progress the reader
+	p, err := multipartFormReader.NextPart()
+	if err != nil {
+		http.Error(w, "Error Streaming MultipartForm: "+err.Error(), 400)
+		return
+	}
 
-    log.Printf("READING PART")
-    log.Printf("File Name: %s", p.FileName())
-    log.Printf("Form Name: %s", p.FormName())
+	// read the identifier metadata from the form
+	if p.FormName() == "metadata" {
 
-    if p.FormName() == "metadata" {
+		// read all metadata
+		datasetMetadata, err := ioutil.ReadAll(p)
+		created, err := MintIdentifier("ark:99999", datasetMetadata)
 
-      // read all at once
-      //metadataEncoded, err = ioutil.ReadAll(p)
+		if err != nil {
+			http.Error(w, "Failed to Create Identifier: "+err.Error(), 500)
+			return
+		}
 
-      // read split up in to chunks of buf.Len()
-      /*
-      var n int
-      for {
-        n, err = p.Read(buf)
-        if err == io.EOF {
-          err = nil
-          break
-        }
-        log.Println("READ CHUNK: " + string(buf[:n]))
-      }
+		// set @id
+		datasetGUID = gjson.Get(string(created), "created").String()
+		//updatedMetadata := sjson.Set(string(metadata), "@id", guid.String())
 
-      if err != nil {
-        http.Error(w, "Error Streaming Metadata: " + err.Error(), 400)
-        return
-      }
-    }
-    */
+	} else {
+		http.Error(w, "Failed to extract metadata: "+err.Error(), 400)
+		return
+	}
 
-      // read into a bytes.Buffer using ReadFrom(io.Reader)
+	// read the next part of the form
+	p, err = multipartFormReader.NextPart()
+	if err != nil {
+		http.Error(w, "Error Streaming MultipartForm: "+err.Error(), 400)
+		return
+	}
 
-      n, err := metadataEncoded.ReadFrom(p)
+	// create identifier and upload content to minio
+	if p.FormName() == "data" {
+		// create a data download identifier for this dataset
+		dataDownload := make(map[string]string)
+		dataDownload["name"] = p.FileName()
+		dataDownload["@context"] = "http://schema.org/"
 
-      if err != nil {
-        http.Error(w, "Error Streaming MultipartForm: " + err.Error(), 500)
-        return
-      }
+		now, _ := time.Now().MarshalText()
+		dataDownload["dateUploaded"] = string(now)
 
-      log.Printf("METADATA READ %d BYTES", n)
+		dataDownloadEncoded, err := json.Marshal(dataDownload)
 
-    }
+		if err != nil {
+			http.Error(w, "Error Encoding DataDownload Metadata to JSON: "+err.Error(), 500)
+			return
+		}
 
-    if p.FormName() == "data" {
+		mintResponse, err := MintIdentifier("ark:99999", dataDownloadEncoded)
 
-      dataFileName = p.FileName()
-      dataSize, err = dataBuffer.ReadFrom(p)
+		if err != nil {
+			http.Error(w, "Error Minting DataDownload Identifier: "+err.Error(), 500)
+			return
+		}
 
-      if err != nil {
-        http.Error(w, "Error Streaming MultipartForm: " + err.Error(), 500)
-        return
-      }
+		downloadGUID = gjson.Get(string(mintResponse), "created").String()
+		dataDownload["@id"] = downloadGUID
 
-      log.Printf("DATA READ %d BYTES", dataSize)
+		// write upload stream to minio
+		// create a minio client
+		minioClient, err := minio.New(MINIO_ENDPOINT, MINIO_ACCESSKEY, MINIO_SECRETKEY, false)
 
+		if err != nil {
+			http.Error(w, "Error Creating Minio Client: "+err.Error(), 500)
+			return
+		}
 
-    }
-  }
+		// upload object to minio
+		opts := minio.PutObjectOptions{UserMetadata: dataDownload}
+		_, err = minioClient.PutObject(bucket, p.FileName(), bufio.NewReader(p), -1, opts)
 
+		if err != nil {
+			http.Error(w, "Error Streaming MultipartForm: "+err.Error(), 500)
+			return
+		}
 
-  /*
-  // decode json value
-  metadata := make(map[string]interface{})
-  err = json.Unmarshal(metadataEncoded, &metadata)
+	} else {
+		http.Error(w, "Failed to Find 'data' Element in MultipartForm: "+err.Error(), 400)
+		return
+	}
 
-  if err != nil {
-    http.Error(w, "Failed to Unmarshal JSON: " + err.Error(), 500)
-    return
-  }
-  */
+	// Update DataDownload with S3 Path
+	downloadUpdate, err := json.Marshal(map[string]interface{}{
+		"contentURL": "s3a://" + MINIO_ENDPOINT + "/" + bucket + "/" + p.FileName(),
+	})
 
+	_, err = UpdateIdentifier(downloadGUID, downloadUpdate)
 
-  // write to minio
-  minioClient, err := minio.New(ENDPOINT, ACCESSKEY, SECRETKEY, false)
+	if err != nil {
+		http.Error(w, "Error Updating Download GUID Identifier with S3 URL: "+err.Error(), 500)
+		return
+	}
 
-  if err != nil {
-    http.Error(w, "Error Creating Minio Client: " + err.Error(), 500)
-    return
-  }
+	// Identifier to Have additional distribution
+	datasetUpdate, err := json.Marshal(map[string]interface{}{
+		"distribution": []string{downloadGUID},
+	})
 
+	_, err = UpdateIdentifier(datasetGUID, datasetUpdate)
 
-  dataReader := bufio.NewReader(&dataBuffer)
+	if err != nil {
+		http.Error(w, "Error Updating DatasetGUID with DataDownload: "+err.Error(), 500)
+		return
+	}
 
-  // upload object to minio
-  uploaded, err := minioClient.PutObject("default", dataFileName, dataReader, dataSize, minio.PutObjectOptions{})
+	response := make(map[string]interface{})
+	response["dataset"] = datasetGUID
+	response["download"] = downloadGUID
 
-  log.Printf("MINIO UPLOADED %d bytes OF %d bytes", uploaded, dataSize)
+	responseJSON, _ := json.Marshal(response)
 
-  if err != nil {
-    http.Error(w, "Minio Put Object Operation Failed: " + err.Error(), 500)
-    return
-  }
-
-  /*
-  if uploaded != dataSize {
-    http.Error(w, "Uploaded " + string(uploaded) + " bytes, but object is " + string(dataSize) + " bytes", 500 )
-    return
-  }
-  */
-
-  response := make(map[string]interface{})
-  response["uploaded"] = uploaded
-
-  w.Header().Set("Content-Type", "application/json")
-  w.WriteHeader(200)
-
-  b, _ := json.Marshal(response)
-  w.Write(b)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	w.Write(responseJSON)
 }
 
-
-func UploadHandler(w http.ResponseWriter, r *http.Request) {
-
-  // parse the multipart form
-  err := r.ParseMultipartForm(32<<20)
-
-  if err != nil {
-    http.Error(w, "Parsing Multipart Form Failed: " + err.Error(), 500)
-    return
-  }
-
-  // access metadata
-  metadataEncoded := r.FormValue("metadata")
-
-  if metadataEncoded == "" {
-    http.Error(w, "Upload Metadata is Nill", 400)
-    return
-  }
-
-  // decode json value
-  metadata := make(map[string]interface{})
-  err = json.Unmarshal( []byte(metadataEncoded), &metadata)
-
-  if err != nil {
-    http.Error(w, "Failed to Unmarshal JSON: " + err.Error(), 500)
-    return
-  }
-
-
-  // get project
-  project := r.FormValue("project")
-
-  if project == "" {
-    project = "default"
-  }
-
-
-  // access data
-  dataFile, dataHeader, err := r.FormFile("data")
-  //_, _, err = r.FormFile("data")
-
-  if err != nil {
-    http.Error(w, "Error Parsing Data blob from Request: " + err.Error(), 400)
-    return
-  }
-
-  // write to minio
-  minioClient, err := minio.New(ENDPOINT, ACCESSKEY, SECRETKEY, false)
-
-  if err != nil {
-    http.Error(w, "Error Creating Minio Client: " + err.Error(), 500)
-    return
-  }
-
-  // write object
-
-
-  // upload object to minio
-  n, err := minioClient.PutObject(project, dataHeader.Filename, dataFile, dataHeader.Size, minio.PutObjectOptions{})
-
-  if err != nil {
-    http.Error(w, "Minio Put Object Operation Failed: " + err.Error(), 500)
-    return
-  }
-
-  if n != dataHeader.Size {
-    http.Error(w, "Uploaded " + string(n) + " bytes, but object is " + string(dataHeader.Size) + " bytes", 500 )
-    return
-  }
-
-  response := make(map[string]interface{})
-  response["uploaded"] = n
-
-  w.Header().Set("Content-Type", "application/json")
-  w.WriteHeader(200)
-
-  b, _ := json.Marshal(response)
-  w.Write(b)
-
-
-}
-
-/*
-func upload() {
-
-  // upload a file
-  objectName  := "UVA matlab file"
-  filePath    := "RR/UVA0052_rr.mat"
-  contentType := "text/plain"
-
-  n, err := minioClient.FPutObject(bucketName, objectName,
-    filePath, minio.PutObjectOptions{ContentType:contentType})
-
-  if err != nil {
-    log.Fatalln(err)
-  }
-
-  log.Printf("Successfully uploaded %s of size %d\n", objectName, n)
-
-}
-*/
-
-func DownloadHandler() {}
-
-func download() {
-
-  endpoint  := "minio.uvadcos.io"
-  accessKey := "minioadmin"
-  secretKey := "miniosecret"
-
-  // initialize client object
-  minioClient, err := minio.New(endpoint, accessKey, secretKey, false)
-  if err != nil {
-    //
-    log.Fatalln(err)
-  }
-
-  // list objects in iTHRIV bucket
-  doneCh := make(chan struct{})
-  defer close(doneCh)
-
-  objectCh := minioClient.ListObjects("ithriv", "", false, doneCh)
-
-  for object := range objectCh {
-    if object.Err != nil {
-      log.Fatalln(object.Err)
-    }
-
-    log.Printf("Found Object:\n\tName: %s\n\tSize: %d\n\tMD5: %s\n\tLastModified: %s",
-      object.Key, object.Size, object.ETag, object.LastModified)
-  }
-
-  // get object
-  err =  minioClient.FGetObject("ithriv", "UVA matlab file",
-    "matlabfile.m",minio.GetObjectOptions{})
-
-  if err != nil {
-    log.Fatal(err)
-  }
-
-  log.Println("Downloaded the UVA matlab file")
-
-}
-
-
-
-func BenchmarkMinioupload(b *testing.B) {
-
-  endpoint  := "minio.uvadcos.io"
-  accessKey := "minioadmin"
-  secretKey := "miniosecret"
-
-  // initialize client object
-  minioClient, err := minio.New(endpoint, accessKey, secretKey, false)
-  if err != nil {
-    log.Fatalln(err)
-  }
-
-  bucketName := "test"
-
-  err = minioClient.MakeBucket(bucketName, "us-east-1")
-  if err != nil {
-    exists, errBucketExists := minioClient.BucketExists(bucketName)
-    if errBucketExists == nil && exists {
-      log.Printf("Bucket %s already exists", bucketName)
-    } else {
-      log.Fatalln(err)
-    }
-  }
-
-
-  // upload a file
-  objectName     := "test1"
-  //filePath       := "UVA Holter RR Matlab.zip"
-  filePath       := "protege.pdf"
-
-  //progressReader := strings.NewReader("Progress Status")
-
-  // open a reader for the
-  objectReader, err := os.Open(filePath)
-  if err != nil {
-    log.Fatalln(err)
-  }
-
-  fileStat, _ := objectReader.Stat()
-
-
-  options :=  minio.PutObjectOptions{
-      UserMetadata: map[string]string{"id": "ors:ithriv/project", "type": "Dataset"},
-      ContentType: "application/octet-stream",
-      NumThreads:  4,
-      }
-  //options := minio.PutObjectOptions{}
-
-  n, err := minioClient.PutObject( bucketName, objectName, objectReader, fileStat.Size(), options)
-
-  if err != nil {
-    log.Fatalln(err)
-  }
-
-  log.Printf("Successfully uploaded %s of size %d\n", objectName, n)
-
-}
+func DownloadStreaming(w http.ResponseWriter, r *http.Request) {}
