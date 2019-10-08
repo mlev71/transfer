@@ -1,0 +1,5 @@
+.DS_Store
+*.ipynb
+transfer
+bin/*
+*.ipynb_checkpoints
