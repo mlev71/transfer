@@ -198,7 +198,7 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 	guid := vars["prefix"] + "/" + vars["suffix"]
 
 	// get the identifier metadata
-	download, err := QueryDownload(guid)
+	bucket, key, err := QueryDownload(guid)
 
 	// get minio object
 
