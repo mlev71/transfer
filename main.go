@@ -12,16 +12,15 @@ import (
 	"io/ioutil"
 	"time"
 	//"strings"
-
+	"mime/multipart"
 	"github.com/minio/minio-go"
+	"io"
 )
 
 var ORS_MDS = "ors.uvadcos.io"
-
 var MINIO_ENDPOINT = "minionas.uvadcos.io"
 var MINIO_ACCESSKEY = "breakfast"
 var MINIO_SECRETKEY = "breakfast"
-
 var DEFAULT_NAMESPACE = "ark:99999"
 var DEFAULT_BUCKET = "default"
 
@@ -56,10 +55,13 @@ func main() {
 	r.HandleFunc("/{prefix}/{suffix}", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
 			DownloadHandler(w, r)
+      return
 		}
 		if r.Method == "PUT" {
 			UpdateHandler(w, r)
-		} else {
+		}
+
+    if r.Method != "GET" && r.Method != "PUT" {
 			http.Error(w, "Method Not Allowed", 403)
 		}
 
@@ -200,16 +202,45 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 	// get the identifier metadata
 	bucket, key, err := QueryDownload(guid)
 
-	// get minio object
+	if err != nil {
+		http.Error(w, "Error Finding Object: " + err.Error(), 500)
+		return
+	}
 
 	// construct a multipart form
+	formWriter := multipart.NewWriter(w)
+	w.Header().Set("Content-Type", formWriter.FormDataContentType())
 
+	objectWriter, err := formWriter.CreateFormFile("object", key)
+	if err != nil {
+		http.Error(w, "Error Forming MultipartResponse:" + err.Error(), 500)
+		return
+	}
+
+	// create a minio client
+	minioClient, err := minio.New(MINIO_ENDPOINT, MINIO_ACCESSKEY, MINIO_SECRETKEY, false)
+	if err != nil {
+		http.Error(w, "Error Creating Minio Client: "+err.Error(), 500)
+		return
+	}
+
+	// get minio object
+	object, err := minioClient.GetObject(bucket, key, minio.GetObjectOptions{})
+
+	if err != nil {
+		http.Error(w, "Failed to Get Minio Object: " + err.Error(), 500)
+		return
+	}
+
+	go io.Copy(objectWriter, object)
+	w.WriteHeader(200)
 }
 
 func UpdateHandler(w http.ResponseWriter, r *http.Request) {}
 
-func UploadStreaming(w http.ResponseWriter, r *http.Request) {
 
+
+func UploadStreaming(w http.ResponseWriter, r *http.Request) {
 	var datasetGUID, downloadGUID string
 	var bucket = "default"
 
