@@ -1,4 +1,4 @@
-package transfer
+package main
 
 import (
 	"bytes"
@@ -76,12 +76,7 @@ func QueryDownload(id string) (bucket string, key string, err error) {
 
 	contentURL := strings.TrimPrefix(download.ContentURL, "s3a://")
 
-	contentURLSplit := strings.SplitN(contentURL, "/", 2)
-
-	if len(contentURLSplit) != 3 {
-		err = errors.New("Content URL Not Split Correctly: " + contentURL)
-		return
-	}
+	contentURLSplit := strings.SplitN(contentURL, "/", 3)
 
 	bucket = contentURLSplit[1]
 	key = contentURLSplit[2]
