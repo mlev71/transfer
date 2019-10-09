@@ -1,4 +1,4 @@
-package transfer
+package main
 
 import (
 	"encoding/json"
@@ -12,9 +12,9 @@ import (
 	"io/ioutil"
 	"time"
 	//"strings"
-	"mime/multipart"
 	"github.com/minio/minio-go"
 	"io"
+	"mime/multipart"
 )
 
 var ORS_MDS = "ors.uvadcos.io"
@@ -41,33 +41,12 @@ func init() {
 func main() {
 
 	r := mux.NewRouter().StrictSlash(false)
+  r.HandleFunc("/{prefix}/{suffix}", DownloadHandler)
+	r.HandleFunc("/upload", UploadHandler)
+
 	n := negroni.New()
-
-	r.HandleFunc("/upload", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
-			UploadHandler(w, r)
-		} else {
-			http.Error(w, "Method Not Allowed", 403)
-		}
-		return
-	})
-
-	r.HandleFunc("/{prefix}/{suffix}", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "GET" {
-			DownloadHandler(w, r)
-      return
-		}
-		if r.Method == "PUT" {
-			UpdateHandler(w, r)
-		}
-
-    if r.Method != "GET" && r.Method != "PUT" {
-			http.Error(w, "Method Not Allowed", 403)
-		}
-
-	})
-
 	n.UseHandler(r)
+
 	log.Fatal(http.ListenAndServe(":8080", n))
 
 }
@@ -128,6 +107,8 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	//dataDownload["@context"] = "http://schema.org/"
 	dataDownload := map[string]string{
+    "@context":     "http://schema.org/",
+    "@type":        "DataDownload",
 		"name":         objectFileHeader.Filename,
 		"dateUploaded": string(now),
 		"dataset":      datasetGUID,
@@ -203,7 +184,7 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 	bucket, key, err := QueryDownload(guid)
 
 	if err != nil {
-		http.Error(w, "Error Finding Object: " + err.Error(), 500)
+		http.Error(w, "Error Finding Object: "+err.Error(), 500)
 		return
 	}
 
@@ -213,7 +194,7 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	objectWriter, err := formWriter.CreateFormFile("object", key)
 	if err != nil {
-		http.Error(w, "Error Forming MultipartResponse:" + err.Error(), 500)
+		http.Error(w, "Error Forming MultipartResponse:"+err.Error(), 500)
 		return
 	}
 
@@ -228,7 +209,7 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 	object, err := minioClient.GetObject(bucket, key, minio.GetObjectOptions{})
 
 	if err != nil {
-		http.Error(w, "Failed to Get Minio Object: " + err.Error(), 500)
+		http.Error(w, "Failed to Get Minio Object: "+err.Error(), 500)
 		return
 	}
 
@@ -237,8 +218,6 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateHandler(w http.ResponseWriter, r *http.Request) {}
-
-
 
 func UploadStreaming(w http.ResponseWriter, r *http.Request) {
 	var datasetGUID, downloadGUID string

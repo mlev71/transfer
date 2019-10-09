@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"errors"
 
+	"encoding/json"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"encoding/json"
 	"strings"
 )
 
