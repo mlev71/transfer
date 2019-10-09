@@ -41,7 +41,7 @@ func init() {
 func main() {
 
 	r := mux.NewRouter().StrictSlash(false)
-  r.HandleFunc("/{prefix}/{suffix}", DownloadHandler)
+	r.HandleFunc("/{prefix}/{suffix}", DownloadHandler)
 	r.HandleFunc("/upload", UploadHandler)
 
 	n := negroni.New()
@@ -107,8 +107,8 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	//dataDownload["@context"] = "http://schema.org/"
 	dataDownload := map[string]string{
-    "@context":     "http://schema.org/",
-    "@type":        "DataDownload",
+		"@context":     "http://schema.org/",
+		"@type":        "DataDownload",
 		"name":         objectFileHeader.Filename,
 		"dateUploaded": string(now),
 		"dataset":      datasetGUID,
@@ -199,7 +199,13 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// create a minio client
-	minioClient, err := minio.New(MINIO_ENDPOINT, MINIO_ACCESSKEY, MINIO_SECRETKEY, false)
+	minioClient, err := minio.New(
+		MINIO_ENDPOINT,
+		MINIO_ACCESSKEY,
+		MINIO_SECRETKEY,
+		false,
+	)
+
 	if err != nil {
 		http.Error(w, "Error Creating Minio Client: "+err.Error(), 500)
 		return
@@ -213,8 +219,8 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go io.Copy(objectWriter, object)
 	w.WriteHeader(200)
+	io.Copy(objectWriter, object)
 }
 
 func UpdateHandler(w http.ResponseWriter, r *http.Request) {}
