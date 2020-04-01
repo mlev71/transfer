@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"github.com/gorilla/mux"
 	"github.com/tidwall/gjson"
-	"github.com/urfave/negroni"
+//	"github.com/urfave/negroni"
 	"log"
 	"net/http"
 
@@ -43,9 +43,6 @@ func main() {
 	r := mux.NewRouter().StrictSlash(false)
 	r.HandleFunc("/{prefix}/{suffix}", DownloadHandler)
 	r.HandleFunc("/upload", UploadHandler)
-
-	n := negroni.New()
-	n.UseHandler(r)
 
 	log.Fatal(http.ListenAndServe(":8080", n))
 
@@ -182,7 +179,6 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get the identifier metadata
 	bucket, key, err := QueryDownload(guid)
-
 	if err != nil {
 		http.Error(w, "Error Finding Object: "+err.Error(), 500)
 		return
@@ -190,7 +186,9 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// construct a multipart form
 	formWriter := multipart.NewWriter(w)
+	defer formWriter.Close()
 	w.Header().Set("Content-Type", formWriter.FormDataContentType())
+	w.Header().Set("Accept", formWriter.FormDataContentType())
 
 	objectWriter, err := formWriter.CreateFormFile("object", key)
 	if err != nil {
@@ -205,7 +203,6 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 		MINIO_SECRETKEY,
 		false,
 	)
-
 	if err != nil {
 		http.Error(w, "Error Creating Minio Client: "+err.Error(), 500)
 		return
@@ -213,7 +210,7 @@ func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get minio object
 	object, err := minioClient.GetObject(bucket, key, minio.GetObjectOptions{})
-
+	defer object.Close()
 	if err != nil {
 		http.Error(w, "Failed to Get Minio Object: "+err.Error(), 500)
 		return
@@ -230,18 +227,15 @@ func UploadStreaming(w http.ResponseWriter, r *http.Request) {
 	var bucket = "default"
 
 	// TODO: Cancelable Request cleanup
-	notify := w.(http.CloseNotifier).CloseNotify()
+	requestCtx, cancelCtx := context.WithCancel(r.Context())
+	r = r.WithContext(requestCtx)
 	go func() {
-		<-notify
 
-		// delete datadownload
+	    // delete metadata from mds
 
-		// delete the minio object
+	    // delete partial upload from minio
 
-		// delete the identifier for the dataset
-		log.Println("Request cancelled cleaning up resources")
-
-	}()
+	}
 
 	// get multipart reader from request
 	multipartFormReader, err := r.MultipartReader()
