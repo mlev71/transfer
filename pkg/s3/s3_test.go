@@ -1,4 +1,4 @@
-package main
+package s3
 
 import (
     "os"
@@ -28,7 +28,7 @@ func TestS3Upload(t *testing.T) {
 
 	// upload to a bucket, random filename
 	err := Upload(bucketName, objectName, reader)
-    
+
 	if err != nil {
 	    t.Fatalf("Failed to Upload File: %s", err.Error())
 	}
@@ -114,7 +114,7 @@ func TestAWS(t *testing.T) {
     f.WriteAt([]byte("1234"), 0)
 
     body, err := ioutil.ReadAll(f)
-    
+
     t.Logf("Body:\n%s", body)
 }
 

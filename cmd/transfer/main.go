@@ -4,15 +4,12 @@ import (
 	"encoding/json"
 	"github.com/gorilla/mux"
 	"github.com/tidwall/gjson"
-//	"github.com/urfave/negroni"
 	"log"
 	"net/http"
 
 	"bufio"
 	"io/ioutil"
 	"time"
-	//"strings"
-	"github.com/minio/minio-go"
 	"io"
 	"mime/multipart"
 )

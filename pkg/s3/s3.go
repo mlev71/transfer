@@ -1,4 +1,4 @@
-package main
+package s3
 
 import (
     "github.com/aws/aws-sdk-go/aws"
@@ -162,9 +162,9 @@ type ObjectSlice struct {
 
 func readSlice(input chan ObjectSlice, output chan ObjectSlice, wg *sync.WaitGroup) {
     // TODO: turn into looping worker pool
-    // i.e. 
-    //for{ 
-    //	    if <-done { break } 
+    // i.e.
+    //for{
+    //	    if <-done { break }
     // }
     slice := <-input
 
@@ -215,7 +215,7 @@ func DownloadConcurrent(bucketName string, objectName string, chunkChan chan byt
     svc := s3.New(sess)
 
 
-    // TODO break this section into seperate Iterate this section 
+    // TODO break this section into seperate Iterate this section
 
     for i:=0; i<N_GOROUTINES; i++ {
 	slice := ObjectSlice{
@@ -268,5 +268,3 @@ func DownloadConcurrent(bucketName string, objectName string, chunkChan chan byt
 
     chunkChan <- chunkBuffer
 }
-
-
