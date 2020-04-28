@@ -11,17 +11,38 @@ import (
     "io"
     "log"
     "bytes"
+
+    "github.com/spf13/viper"
+
 //    "os"
 //    "net/http"
 )
+
+func init() {
+
+  viper.SetDefault("s3accesskey", "minioadmin")
+  viper.SetDefault("s3secretkey", "miniosecret")
+  viper.SetDefault("s3endpoint", "http://localhost:9000")
+  viper.SetDefault("s3disablessl", true)
+
+
+}
 
 
 func Session() (sess *session.Session, err error) {
     // Initialize a session in us-west-2 that the SDK will use to load
     // credentials from the shared credentials file ~/.aws/credentials.
-    cred := credentials.NewStaticCredentials("breakfast", "breakfast", "")
+    cred := credentials.NewStaticCredentials(
+      viper.GetString("s3accesskey"),
+      viper.GetString("s3secretkey"),
+      "",
+      )
 
-    config := aws.NewConfig().WithEndpoint("http://minionas.uvadcos.io").WithDisableSSL(true).WithS3ForcePathStyle(true).WithRegion("us-east-1").WithCredentials(cred)
+    config := aws.NewConfig().WithEndpoint(
+      viper.GetString("s3endpoint")
+    ).WithDisableSSL(
+      viper.GetBool("s3disablessl")
+    ).WithS3ForcePathStyle(true).WithRegion("us-east-1").WithCredentials(cred)
 
     sess, err = session.NewSession(config)
     return
@@ -64,8 +85,8 @@ func Upload(bucketName string, objectName string,  object io.Reader) (err error)
     // Create an uploader with the session and custom options
     //uploader := s3manager.NewUploader(sess)
     uploader := s3manager.NewUploader(sess, func(u *s3manager.Uploader) {
-	u.Concurrency = 8
-	// u.PartSize = 10 * 1024 * 1024 // 64MB per part
+  	u.Concurrency = 8
+  	// u.PartSize = 10 * 1024 * 1024 // 64MB per part
     })
 
     result, err := uploader.Upload(&s3manager.UploadInput{
@@ -87,7 +108,7 @@ func Upload(bucketName string, objectName string,  object io.Reader) (err error)
 func DownloadBasic(bucketName string, objectName string, object io.WriterAt) (err error) {
     sess, err := Session()
     if err != nil {
-	return
+	   return
     }
 
     downloader := s3manager.NewDownloader(sess)

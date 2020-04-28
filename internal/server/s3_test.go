@@ -104,7 +104,7 @@ func TestAWS(t *testing.T) {
     f, err := os.Create("temporary_file")
 
     if err != nil {
-	t.Fatalf("Failed to Open File: %s", err.Error())
+	   t.Fatalf("Failed to Open File: %s", err.Error())
     }
     defer f.Close()
 
@@ -117,7 +117,3 @@ func TestAWS(t *testing.T) {
 
     t.Logf("Body:\n%s", body)
 }
-
-func TestUpdate(t *testing.T) {}
-
-func TestDelete(t *testing.T) {}
