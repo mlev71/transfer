@@ -1,4 +1,4 @@
-package s3
+package server
 
 import (
     "github.com/aws/aws-sdk-go/aws"
@@ -38,11 +38,7 @@ func Session() (sess *session.Session, err error) {
       "",
       )
 
-    config := aws.NewConfig().WithEndpoint(
-      viper.GetString("s3endpoint")
-    ).WithDisableSSL(
-      viper.GetBool("s3disablessl")
-    ).WithS3ForcePathStyle(true).WithRegion("us-east-1").WithCredentials(cred)
+    config := aws.NewConfig().WithEndpoint(viper.GetString("s3endpoint")).WithDisableSSL(viper.GetBool("s3disablessl")).WithS3ForcePathStyle(true).WithRegion("us-east-1").WithCredentials(cred)
 
     sess, err = session.NewSession(config)
     return

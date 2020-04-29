@@ -5,7 +5,11 @@ import (
 	"net/http"
 	"errors"
 	"fmt"
-	"log"
+//	"log"
+
+	"io/ioutil"
+	"github.com/buger/jsonparser"
+	"encoding/json"
 )
 
 
@@ -19,6 +23,8 @@ var (
 	ErrIdentifierMissingMetadata = errors.New("Identifier Requires non Null metadata")
 	ErrIdentifierInvalidMetadata = errors.New("Identifier has invalid Metadata")
 	ErrMDSOperation = errors.New("MDS API Operation Not Successfull")
+	ErrIdentifierDistributionMissing = errors.New("Identifier has no Download Objects")
+	ErrIdentifierDistributionMalformed = errors.New("Identifier has malformed Download Property")
 )
 
 type Identifier struct {
@@ -37,11 +43,11 @@ func (i *Identifier)Post() (err error) {
 		return ErrIdentifierMissingMetadata
 	}
 
-	url := "http://" + MDS_URI + "/" + i.GUID
+	url := "http://" + MDS_URI + "/" + i.ID
 
 	client := &http.Client{}
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(metadata))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(i.Metadata))
 	if err != nil {
 		return fmt.Errorf("%w\t%s", ErrRequestInit, err.Error())
 	}
@@ -51,11 +57,13 @@ func (i *Identifier)Post() (err error) {
 		return fmt.Errorf("%w\t%s", ErrRequestFailure, err.Error())
 	}
 
-	r, err = ioutil.ReadAll(response.Body)
 	if response.StatusCode != 201 {
 		// read out response
 		return ErrMDSOperation
 	}
+
+
+	// r, err := ioutil.ReadAll(response.Body)
 
 	return
 
@@ -75,7 +83,7 @@ func (i *Identifier)Mint() (err error) {
 
 	client := &http.Client{}
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(metadata))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(i.Metadata))
 	if err != nil {
 		return fmt.Errorf("%w\t%s", ErrRequestInit, err.Error())
 	}
@@ -85,10 +93,19 @@ func (i *Identifier)Mint() (err error) {
 		return fmt.Errorf("%w\t%s", ErrRequestFailure, err.Error())
 	}
 
-	r, err = ioutil.ReadAll(response.Body)
 	if response.StatusCode != 201 {
 		return ErrMDSOperation
 	}
+
+	r, err := ioutil.ReadAll(response.Body)
+
+	mintedId, err := jsonparser.GetString(r, "@id")
+
+	if err != nil {
+		return
+	}
+
+	i.ID = mintedId
 
 	return
 
@@ -115,11 +132,14 @@ func (i *Identifier)Delete() (err error) {
 		return fmt.Errorf("%w\t%s", ErrRequestFailure, err.Error())
 	}
 
-	r, err = ioutil.ReadAll(response.Body)
+	r, err := ioutil.ReadAll(response.Body)
+
 	if response.StatusCode != 200 {
 		// read out response
 		return ErrMDSOperation
 	}
+
+	i.Metadata = r
 
 	return
 
@@ -135,11 +155,11 @@ func (i *Identifier)Update() (err error) {
 		return ErrIdentifierMissingMetadata
 	}
 
-	url := "http://" + MDS_URI + "/" + i.GUID
+	url := "http://" + MDS_URI + "/" + i.ID
 
 	client := &http.Client{}
 
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(metadata))
+	req, err := http.NewRequest("PUT", url, bytes.NewReader(i.Metadata))
 	if err != nil {
 		return fmt.Errorf("%w\t%s", ErrRequestInit, err.Error())
 	}
@@ -149,11 +169,13 @@ func (i *Identifier)Update() (err error) {
 		return fmt.Errorf("%w\t%s", ErrRequestFailure, err.Error())
 	}
 
-	r, err = ioutil.ReadAll(response.Body)
+	r, err := ioutil.ReadAll(response.Body)
 	if response.StatusCode != 201 {
 		// read out response
 		return ErrMDSOperation
 	}
+
+	i.Metadata = r
 
 	return
 
@@ -181,7 +203,7 @@ func (i *Identifier)Get() (err error) {
 		return
 	}
 
-	r, err = ioutil.ReadAll(response.Body)
+	r, err := ioutil.ReadAll(response.Body)
 
 	if response.StatusCode != 200 {
 		// read out response
@@ -191,4 +213,54 @@ func (i *Identifier)Get() (err error) {
 	i.Metadata = r
 	return
 
+}
+
+func (i *Identifier)GetDownloads() (downloads []Download, err error) {
+
+	downloadJson, dtype, _, err := jsonparser.Get(i.Metadata, "distribution")
+
+	if err != nil {
+		return
+	}
+
+	switch dtype {
+
+		case jsonparser.Object:
+			err = json.Unmarshal(downloadJson, &downloads[0])
+
+		case jsonparser.Array:
+			err = json.Unmarshal(downloadJson, &downloads)
+
+		case jsonparser.NotExist:
+			err = ErrIdentifierDistributionMissing
+
+		case jsonparser.Null:
+			err = ErrIdentifierDistributionMissing
+
+		default:
+			err = ErrIdentifierDistributionMalformed
+	}
+
+
+
+	return
+}
+
+type Download struct {
+	ID string	`json:"@id"`
+	Type string `json:"@type"`
+	Name string	`json:"name"`
+	ContentURL string `json:"contentURL"`
+}
+
+func (d *Download)GetFile() (err error) {
+
+	/*
+		contentURL := strings.TrimPrefix(download.ContentURL, "s3a://")
+		contentURLSplit := strings.SplitN(contentURL, "/", 3)
+		bucket = contentURLSplit[1]
+		key = contentURLSplit[2]
+	*/
+
+	return
 }
