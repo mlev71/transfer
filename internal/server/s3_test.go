@@ -9,8 +9,24 @@ import (
 
 func TestS3(t *testing.T) {
 
+	testS3 := S3{
+		AccessKey: "minioadmin",
+		SecretKey: "miniosecret",
+		Endpoint: "http://localhost:9000",
+	}
+
 	t.Run("CreateBucket", func(t *testing.T){})
-	t.Run("ListBuckets", func(t *testing.T){})
+	t.Run("ListBuckets", func(t *testing.T){
+
+		buckets, err := testS3.ListBuckets()
+
+		if err != nil {
+				t.Fatalf("ListBucketsError: %w", err)
+		}
+
+		t.Logf("ListBuckets: %s", strings.Join(buckets, " , "))
+
+	})
 	t.Run("DeleteBucket", func(t *testing.T){})
 	t.Run("CreateObject", func(t *testing.T){})
 	t.Run("GetObject", func(t *testing.T){})

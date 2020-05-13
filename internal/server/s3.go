@@ -53,7 +53,24 @@ func (s *S3) session() (sess *session.Session, err error) {
 
 }
 
-func (s *S3) ListBuckets() (err error) {
+func (s *S3) ListBuckets() (buckets []string, err error) {
+
+	sess, err := s3Session()
+	if err != nil {
+		return
+	}
+
+	svc := s3.New(sess)
+
+	result, err := svc.ListBuckets(nil)
+	if err != nil {
+		return
+	}
+
+	for i, bucket := range result.Buckets {
+		buckets[i] = bucket.Name
+	}
+
 	return
 }
 
