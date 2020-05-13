@@ -15,7 +15,14 @@ func TestS3(t *testing.T) {
 		Endpoint: "http://localhost:9000",
 	}
 
-	t.Run("CreateBucket", func(t *testing.T){})
+	var bucketName = "unittest"
+
+	t.Run("CreateBucket", func(t *testing.T){
+		err = testS3.CreateBucket(bucketName)
+		if err != nil {
+			t.Fatalf("ListBucketsError: %w", err)
+		}
+	})
 	t.Run("ListBuckets", func(t *testing.T){
 
 		buckets, err := testS3.ListBuckets()
