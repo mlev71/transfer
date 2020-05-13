@@ -11,20 +11,18 @@ import (
 	"io"
 	"log"
 	"sync"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
-	"github.com/spf13/viper"
-	//    "os"
+	"os"
 	//    "net/http"
 )
 
-func init() {
 
-	viper.SetDefault("s3accesskey", "minioadmin")
-	viper.SetDefault("s3secretkey", "miniosecret")
-	viper.SetDefault("s3endpoint", "http://localhost:9000")
-	viper.SetDefault("s3disablessl", true)
+var (
+	s3Logger = zerolog.New(os.Stderr).With().Timestamp().Str("backend", "s3").Logger()
+)
 
-}
 
 type S3 struct {
 	AccessKey  string
@@ -33,7 +31,7 @@ type S3 struct {
 	DisableSSL bool
 }
 
-func (s *S3) session() (sess *session.Session, err error) {
+func (s *S3) session() (svc *s3.S3, err error) {
 
 	cred := credentials.NewStaticCredentials(
 		s.AccessKey,
@@ -49,20 +47,21 @@ func (s *S3) session() (sess *session.Session, err error) {
 		WithCredentials(cred)
 
 	sess, err = session.NewSession(config)
+
+	svc := s3.New(sess)
 	return
 
 }
 
 func (s *S3) ListBuckets() (buckets []string, err error) {
 
-	sess, err := s3Session()
+	sess, err := s.session()
 	if err != nil {
 		return
 	}
 
-	svc := s3.New(sess)
 
-	result, err := svc.ListBuckets(nil)
+	result, err := sess.ListBuckets(nil)
 	if err != nil {
 		return
 	}
@@ -74,12 +73,30 @@ func (s *S3) ListBuckets() (buckets []string, err error) {
 	return
 }
 
-func (s *S3) CreateBucket() (err error) {
+func (s *S3) CreateBucket(name string) (err error) {
+
+	var bucketInput *s3.CreateBucketInput
+	bucketInput = bucketInput.SetBucket(name)
+
+	sess, err := s.session()
+	if err != nil {
+		return
+	}
+
+
+	bucketOutput, err := sess.CreateBucket(bucket)
+	// log the bucket output
+
+	s3Logger.Info().
+		String("bucketName", name)
+		String("output", bucketOutput.String()).
+		Msg("Successfully created bucket")
+)
+
 	return
 }
 
 func (s *S3) GetObjectInfo() (err error) {
-
 	return
 }
 
@@ -95,43 +112,6 @@ func (s *S3) DeleteObject() (err error) {
 	return
 }
 
-func s3Session() (sess *session.Session, err error) {
-	// Initialize a session in us-west-2 that the SDK will use to load
-	// credentials from the shared credentials file ~/.aws/credentials.
-	cred := credentials.NewStaticCredentials(
-		viper.GetString("s3accesskey"),
-		viper.GetString("s3secretkey"),
-		"",
-	)
-
-	config := aws.NewConfig().WithEndpoint(viper.GetString("s3endpoint")).WithDisableSSL(viper.GetBool("s3disablessl")).WithS3ForcePathStyle(true).WithRegion("us-east-1").WithCredentials(cred)
-
-	sess, err = session.NewSession(config)
-	return
-}
-
-func ListBuckets() (err error) {
-	sess, err := s3Session()
-
-	svc := s3.New(sess)
-	if err != nil {
-		return
-	}
-
-	result, err := svc.ListBuckets(nil)
-	if err != nil {
-		return
-	}
-
-	fmt.Println("Buckets:")
-
-	for _, b := range result.Buckets {
-		fmt.Printf("* %s created on %s\n",
-			aws.StringValue(b.Name), aws.TimeValue(b.CreationDate))
-	}
-
-	return
-}
 
 func Upload(bucketName string, objectName string, object io.Reader) (err error) {
 	sess, err := s3Session()
