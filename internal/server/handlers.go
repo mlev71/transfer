@@ -27,7 +27,6 @@ var MINIO_SECRETKEY = "miniosecret"
 var DEFAULT_NAMESPACE = "ark:99999"
 var DEFAULT_BUCKET = "default"
 
-
 /*
 func UploadHandler(w http.ResponseWriter, r *http.Request) {
 

@@ -1,13 +1,13 @@
 package server
 
 import (
-	"testing"
 	"encoding/json"
 	"github.com/buger/jsonparser"
+	"testing"
 	// "github.com/stretchr/testify/assert"
 )
 
-func TestIdentifier(t *testing.T){
+func TestIdentifier(t *testing.T) {
 
 	metadata := []byte(`{
 		"@type": "Dataset",
@@ -20,12 +20,11 @@ func TestIdentifier(t *testing.T){
 		}`)
 
 	id := &Identifier{
-			Namespace: "ark:99999",
-			Metadata: metadata,
+		Namespace: "ark:99999",
+		Metadata:  metadata,
 	}
 
-
-	t.Run("Mint", func(t *testing.T){
+	t.Run("Mint", func(t *testing.T) {
 
 		err := id.Mint()
 		if err != nil {
@@ -34,25 +33,25 @@ func TestIdentifier(t *testing.T){
 		t.Logf("Minted Identifier: %s", id.ID)
 	})
 
-	t.Run("Post", func(t *testing.T){})
+	t.Run("Post", func(t *testing.T) {})
 
-	t.Run("Update", func(t *testing.T){})
+	t.Run("Update", func(t *testing.T) {})
 
-	t.Run("Get", func(t *testing.T){})
+	t.Run("Get", func(t *testing.T) {})
 
-	t.Run("Delete", func(t *testing.T){})
+	t.Run("Delete", func(t *testing.T) {})
 
 }
 
 func TestDownload(t *testing.T) {
 
-	t.Run("getDownloads", func(t *testing.T){
+	t.Run("getDownloads", func(t *testing.T) {
 
 		//a := assert.New(t)
 
-		t.Run("Single", func(t *testing.T){
+		t.Run("Single", func(t *testing.T) {
 
-		    metadata := []byte(`{
+			metadata := []byte(`{
 		    "@id": "ark:99999/testdataset",
 		    "@type": "Dataset",
 		    "name": "Test Dataset",
@@ -63,30 +62,29 @@ func TestDownload(t *testing.T) {
 			    }
 		    	}`)
 
-		    downloadJson, dtype, _, err := jsonparser.Get(metadata, "distribution")
+			downloadJson, dtype, _, err := jsonparser.Get(metadata, "distribution")
 
-		    if err != nil {
+			if err != nil {
 
-			t.Fatalf("Failed to Get Distribution: %s", err.Error())
-		    }
-		    t.Logf("Found Datatype: %+v", dtype)
-		    t.Logf("Found Download: %s", string(downloadJson))
+				t.Fatalf("Failed to Get Distribution: %s", err.Error())
+			}
+			t.Logf("Found Datatype: %+v", dtype)
+			t.Logf("Found Download: %s", string(downloadJson))
 
-		    // unmarshal into a download
-		    var d Download
-		    err = json.Unmarshal(downloadJson, &d)
+			// unmarshal into a download
+			var d Download
+			err = json.Unmarshal(downloadJson, &d)
 
-		    if err != nil {
-			t.Fatalf("Failed to Unmarshal JSON: %s", err.Error())
-		    }
+			if err != nil {
+				t.Fatalf("Failed to Unmarshal JSON: %s", err.Error())
+			}
 
-		    t.Logf("Download Object ID: %s", d.ID)
+			t.Logf("Download Object ID: %s", d.ID)
 		})
 
+		t.Run("Multiple", func(t *testing.T) {
 
-		t.Run("Multiple", func(t *testing.T){
-
-		    metadata := []byte(`{
+			metadata := []byte(`{
 				    "@id": "ark:99999/testdataset",
 				    "@type": "Dataset",
 				    "name": "Test Dataset",
@@ -104,37 +102,37 @@ func TestDownload(t *testing.T) {
 					]
 				    }`)
 
-		    downloadJson, dtype, _, err := jsonparser.Get(metadata, "distribution")
+			downloadJson, dtype, _, err := jsonparser.Get(metadata, "distribution")
 
-		    if err != nil {
+			if err != nil {
 
-			t.Fatalf("Failed to Get Distribution: %s", err.Error())
-		    }
-		    t.Logf("Found Datatype: %+v", dtype)
-		    t.Logf("Found Download: %s", string(downloadJson))
+				t.Fatalf("Failed to Get Distribution: %s", err.Error())
+			}
+			t.Logf("Found Datatype: %+v", dtype)
+			t.Logf("Found Download: %s", string(downloadJson))
 
-		    // unmarshal into a download
-		    var d []Download
-		    err = json.Unmarshal(downloadJson, &d)
+			// unmarshal into a download
+			var d []Download
+			err = json.Unmarshal(downloadJson, &d)
 
-		    if err != nil {
-			t.Fatalf("Failed to Unmarshal JSON: %s", err.Error())
-		    }
+			if err != nil {
+				t.Fatalf("Failed to Unmarshal JSON: %s", err.Error())
+			}
 
-		    t.Logf("Download Object ID: %+v", d)
+			t.Logf("Download Object ID: %+v", d)
 		})
 
 		/*
-		id := Identifier{Metadata: metadata}
-		downloads, err := id.GetDownloads()
+			id := Identifier{Metadata: metadata}
+			downloads, err := id.GetDownloads()
 
-		if err != nil {
-		    t.Fatalf("Failed to Get Downloads: %s", err.Error())
-		}
+			if err != nil {
+			    t.Fatalf("Failed to Get Downloads: %s", err.Error())
+			}
 
-		//a.Equal(len(downloads), 1, "Should Find One Download")
-		a.Equal(downloads[0].ID, "ark:99999/testdownload", "Correctly Parses GUID from JSON")
-		a.Equal(downloads[0].ContentURL, "s3a://bucket/key", "Correctly Retrieves content URI")
+			//a.Equal(len(downloads), 1, "Should Find One Download")
+			a.Equal(downloads[0].ID, "ark:99999/testdownload", "Correctly Parses GUID from JSON")
+			a.Equal(downloads[0].ContentURL, "s3a://bucket/key", "Correctly Retrieves content URI")
 		*/
 
 	})
