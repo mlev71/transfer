@@ -21,23 +21,21 @@ import (
 )
 
 var ORS_MDS = "ors.uvadcos.io"
-var MINIO_ENDPOINT = "minionas.uvadcos.io"
-var MINIO_ACCESSKEY = "breakfast"
-var MINIO_SECRETKEY = "breakfast"
+var S3_ENDPOINT = "localhost:9000"
+var MINIO_ACCESSKEY = "minioadmin"
+var MINIO_SECRETKEY = "miniosecret"
 var DEFAULT_NAMESPACE = "ark:99999"
 var DEFAULT_BUCKET = "default"
 
-func UploadHandler(w http.ResponseWriter, r *http.Request) {}
-
-func DownloadHandler(w http.ResponseWriter, r *http.Request) {}
-
-func UpdateHandler(w http.ResponseWriter, r *http.Request) {}
 
 /*
 func UploadHandler(w http.ResponseWriter, r *http.Request) {
 
-	var datasetGUID, downloadGUID string
-	var bucket, key, namespace string
+	var id, download Identifier
+
+	var bucket, namespace string
+	bucket = DEFAULT_BUCKET
+
 
 	vars := mux.Vars(r)
 	namespace = vars["prefix"]
@@ -60,69 +58,79 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	datasetMetadata := r.PostFormValue("metadata")
+	metadata := r.PostFormValue("metadata")
 
-	if datasetMetadata == "" {
+	if metadata == "" {
 		http.Error(w, `{"error": "`+err.Error()+`", "message": "Multipart Form missing object metadata"}`, 400)
 		return
 	}
 
-	namespace = r.PostFormValue("namespace")
-	if namespace == "" {
-		namespace = DEFAULT_NAMESPACE
-	}
+	id := &Identifier{Namespace: namespace, Metadata: []byte(metadata)}
 
-	bucket = r.PostFormValue("bucket")
-	if bucket == "" {
-		bucket = DEFAULT_BUCKET
-	}
 
-	key = r.PostFormValue("key")
-	if key == "" {
-		key = objectFileHeader.Filename
-	}
-
-	id := &Identifier{Namespace: namespace, Metadata: datasetMetadata}
-
-	// mint the dataset identifier
-	mintDataset, err := MintIdentifier(namespace, []byte(datasetMetadata))
-	datasetGUID = gjson.Get(string(mintDataset), "created").String()
+	err := id.Mint()
 
 	if err != nil {
 		http.Error(w, "Failed to Create Identifier: "+err.Error(), 500)
 		return
 	}
 
+
 	// mint the DataDownload Identifier
 	now, _ := time.Now().MarshalText()
 
-	//dataDownload["@context"] = "http://schema.org/"
-	dataDownload := map[string]string{
-		"@context":     "http://schema.org/",
-		"@type":        "DataDownload",
+	downloadMap := map[string]string{
+		"@type":        "MediaObject",
 		"name":         objectFileHeader.Filename,
 		"dateUploaded": string(now),
-		"dataset":      datasetGUID,
+		"distributionOf":  id.ID,
+		"contentURL": "s3a://" + S3_ENDPOINT + "/" + DEFAULT_BUCKET + "/" + objectFileHeader.Filename,
 	}
-	dataDownloadEncoded, err := json.Marshal(dataDownload)
+
+	downloadMetadata, err := json.Marshal(downloadMap)
 
 	if err != nil {
 		http.Error(w, "Error Encoding DataDownload Metadata to JSON: "+err.Error(), 500)
 		return
 	}
 
-	mintDownload, err := MintIdentifier("ark:99999", dataDownloadEncoded)
-	downloadGUID = gjson.Get(string(mintDownload), "created").String()
-	dataDownload["@id"] = downloadGUID
+	download := &Identifier{Namespace: namespace, Metadata: downloadMetadata}
 
-	// Write Object to Minio
-	// create a minio client
-	minioClient, err := minio.New(MINIO_ENDPOINT, MINIO_ACCESSKEY, MINIO_SECRETKEY, false)
+	err = download.Mint()
 
 	if err != nil {
-		http.Error(w, "Error Creating Minio Client: "+err.Error(), 500)
+		http.Error(w, "Failed to Create Identifier: "+err.Error(), 500)
 		return
 	}
+
+
+	// Update Dataset Identifier
+	_, err = json.Marshal(map[string]interface{}{
+		"distribution": map[string]interface{}{
+			"@id":   downloadGUID,
+			"@type": "DataDownload",
+			"name":  objectFileHeader.Filename,
+		},
+	})
+
+
+
+	if err != nil {
+		http.Error(w, "Error Updating Download GUID Identifier with S3 URL: "+err.Error(), 500)
+		return
+	}
+
+	w.WriteHeader(200)
+	w.Write([]byte(`{"status": "success", "namespace": "` + namespace + `", "bucket": "` +
+		bucket + `", "metadata": ` + datasetMetadata + `, "dataset": "` +
+		datasetGUID + `", "download": "` + downloadGUID + `"}`))
+}
+*/
+func DownloadHandler(w http.ResponseWriter, r *http.Request) {}
+
+func UpdateHandler(w http.ResponseWriter, r *http.Request) {}
+
+/*
 
 	// upload object to minio
 	_, err = minioClient.PutObject(
@@ -137,33 +145,6 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error": "`+err.Error()+`", "message", "Failed to Upload Object to Minio"}`, 500)
 		return
 	}
-
-	// Update Dataset
-	_, err = json.Marshal(map[string]interface{}{
-		"distribution": map[string]interface{}{
-			"@id":   downloadGUID,
-			"@type": "DataDownload",
-			"name":  objectFileHeader.Filename,
-		},
-	})
-
-	// Update DataDownload with S3 Path
-	downloadUpdate, err := json.Marshal(map[string]interface{}{
-		"contentURL": "s3a://" + MINIO_ENDPOINT + "/" + bucket + "/" + key,
-	})
-
-	_, err = UpdateIdentifier(downloadGUID, downloadUpdate)
-
-	if err != nil {
-		http.Error(w, "Error Updating Download GUID Identifier with S3 URL: "+err.Error(), 500)
-		return
-	}
-
-	w.WriteHeader(200)
-	w.Write([]byte(`{"status": "success", "namespace": "` + namespace + `", "bucket": "` +
-		bucket + `", "metadata": ` + datasetMetadata + `, "dataset": "` +
-		datasetGUID + `", "download": "` + downloadGUID + `"}`))
-}
 
 func DownloadHandler(w http.ResponseWriter, r *http.Request) {
 

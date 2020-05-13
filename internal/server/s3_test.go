@@ -1,7 +1,6 @@
 package server
 
 import (
-    "os"
     "io/ioutil"
     "github.com/aws/aws-sdk-go/aws"
     "testing"
@@ -9,7 +8,7 @@ import (
     "bytes"
 )
 
-func TestListBuckets(t *testing.T) {
+func TestS3ListBuckets(t *testing.T) {
 
     err := ListBuckets()
     if err != nil {
@@ -36,7 +35,7 @@ func TestS3Upload(t *testing.T) {
 
 }
 
-func TestDownload(t *testing.T) {
+func TestS3Download(t *testing.T) {
 
     bucketName := "prevent"
     objectName := "testSample.csv"
@@ -84,7 +83,7 @@ func TestDownload(t *testing.T) {
 
 }
 
-func TestConcurrent(t *testing.T) {
+func TestS3Concurrent(t *testing.T) {
 
     bucketName := "prevent"
     objectName := "testSample.csv"
@@ -96,24 +95,4 @@ func TestConcurrent(t *testing.T) {
     page := <-chunkChannel
     t.Logf("Recieved Message: %s", page.String())
 
-}
-
-func TestAWS(t *testing.T) {
-    //var init []byte
-    //buf := aws.NewWriteAtBuffer(init)
-    f, err := os.Create("temporary_file")
-
-    if err != nil {
-	   t.Fatalf("Failed to Open File: %s", err.Error())
-    }
-    defer f.Close()
-
-    // var pos int
-    // pos = 32
-    f.WriteAt([]byte("1234"), 10)
-    f.WriteAt([]byte("1234"), 0)
-
-    body, err := ioutil.ReadAll(f)
-
-    t.Logf("Body:\n%s", body)
 }

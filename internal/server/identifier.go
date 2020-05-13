@@ -27,6 +27,7 @@ var (
 	ErrIdentifierDistributionMalformed = errors.New("Identifier has malformed Download Property")
 )
 
+
 type Identifier struct {
 	ID	string
 	Namespace	string
@@ -62,8 +63,8 @@ func (i *Identifier)Post() (err error) {
 		return ErrMDSOperation
 	}
 
-
-	// r, err := ioutil.ReadAll(response.Body)
+	r, err := ioutil.ReadAll(response.Body)
+	log.Printf("PostedIdentifier\tStatusCode: %d\tBody: %s", response.StatusCode, string(r))
 
 	return
 
@@ -215,7 +216,7 @@ func (i *Identifier)Get() (err error) {
 
 }
 
-func (i *Identifier)GetDownloads() (downloads []Download, err error) {
+func (i *Identifier)getDownloads() (downloads []Download, err error) {
 
 	downloadJson, dtype, _, err := jsonparser.Get(i.Metadata, "distribution")
 
@@ -226,7 +227,9 @@ func (i *Identifier)GetDownloads() (downloads []Download, err error) {
 	switch dtype {
 
 		case jsonparser.Object:
-			err = json.Unmarshal(downloadJson, &downloads[0])
+			var d Download
+			err = json.Unmarshal(downloadJson, &d)
+			downloads = append(downloads, d)
 
 		case jsonparser.Array:
 			err = json.Unmarshal(downloadJson, &downloads)
@@ -247,20 +250,21 @@ func (i *Identifier)GetDownloads() (downloads []Download, err error) {
 }
 
 type Download struct {
-	ID string	`json:"@id"`
-	Type string `json:"@type"`
-	Name string	`json:"name"`
-	ContentURL string `json:"contentURL"`
+	ID string	    `json:"@id"`
+	Type string	    `json:"@type"`
+	Name string	    `json:"name"`
+	ContentURL string   `json:"contentURL"`
 }
 
+
+/*
 func (d *Download)GetFile() (err error) {
 
-	/*
 		contentURL := strings.TrimPrefix(download.ContentURL, "s3a://")
 		contentURLSplit := strings.SplitN(contentURL, "/", 3)
 		bucket = contentURLSplit[1]
 		key = contentURLSplit[2]
-	*/
 
 	return
 }
+*/

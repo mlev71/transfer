@@ -29,7 +29,7 @@ func init() {
 }
 
 
-func Session() (sess *session.Session, err error) {
+func s3Session() (sess *session.Session, err error) {
     // Initialize a session in us-west-2 that the SDK will use to load
     // credentials from the shared credentials file ~/.aws/credentials.
     cred := credentials.NewStaticCredentials(
@@ -46,11 +46,11 @@ func Session() (sess *session.Session, err error) {
 
 
 func ListBuckets() (err error) {
-    sess, err := Session()
+    sess, err := s3Session()
 
     svc := s3.New(sess)
     if err != nil {
-	return
+      return
     }
 
     result, err := svc.ListBuckets(nil)
@@ -72,7 +72,7 @@ func ListBuckets() (err error) {
 
 
 func Upload(bucketName string, objectName string,  object io.Reader) (err error) {
-    sess, err := Session()
+    sess, err := s3Session()
 
     if err != nil {
 	return
@@ -85,24 +85,21 @@ func Upload(bucketName string, objectName string,  object io.Reader) (err error)
   	// u.PartSize = 10 * 1024 * 1024 // 64MB per part
     })
 
-    result, err := uploader.Upload(&s3manager.UploadInput{
-	Bucket: aws.String(bucketName),
-	Key:    aws.String(objectName),
-	Body:   object, //io.Reader
-	})
-
-    log.Printf("RESULT: %+v", result)
-
-    if err != nil {
-	return
+    uploadInput := &s3manager.UploadInput{
+    	Bucket: aws.String(bucketName),
+    	Key:    aws.String(objectName),
+    	Body:   object, //io.Reader
+      //Metadata: , //map[string]*string
     }
+
+    _, err = uploader.Upload(uploadInput)
 
     return
 }
 
 
 func DownloadBasic(bucketName string, objectName string, object io.WriterAt) (err error) {
-    sess, err := Session()
+    sess, err := s3Session()
     if err != nil {
 	   return
     }
@@ -123,7 +120,7 @@ func DownloadBasic(bucketName string, objectName string, object io.WriterAt) (er
 }
 
 func DownloadMultipart(bucketName string, objectName string, object io.WriterAt) (err error) {
-    sess, err := Session()
+    sess, err := s3Session()
     if err != nil {
 	return
     }
@@ -148,7 +145,7 @@ func DownloadMultipart(bucketName string, objectName string, object io.WriterAt)
 
 func DownloadRange(bucketName string, objectName string, byteStart, byteEnd int) (result *s3.GetObjectOutput, err error) {
 
-    sess, err := Session()
+    sess, err := s3Session()
     if err != nil {
 	return
     }
@@ -224,7 +221,7 @@ func DownloadConcurrent(bucketName string, objectName string, chunkChan chan byt
 
     var wg sync.WaitGroup
 
-    sess, err := Session()
+    sess, err := s3Session()
     if err != nil {
 	return
     }
