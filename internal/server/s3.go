@@ -57,18 +57,37 @@ func (s *S3) ListBuckets() (buckets []string, err error) {
 
 	sess, err := s.session()
 	if err != nil {
+		s3Logger.Error().
+			String("operation", "ListBuckets").
+			Err("error", err).
+			Msg("Error Constructing Session")
+
 		return
 	}
 
 
 	result, err := sess.ListBuckets(nil)
 	if err != nil {
+		s3Logger.Error().
+			String("operation", "ListBuckets").
+			Err("error", err).
+			Msg("Error Preforming Operation")
+
 		return
 	}
 
+
+	foundLog := zerolog.Arr()
 	for i, bucket := range result.Buckets {
 		buckets[i] = bucket.Name
+		foundLog = foundLog.Str(bucket.Name)
 	}
+
+
+	s3Logger.Info().
+		String("operation", "ListBuckets").
+		Array("buckets", foundLog)
+		Msg("Success")
 
 	return
 }
